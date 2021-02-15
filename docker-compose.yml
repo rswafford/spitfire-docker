@@ -1,0 +1,220 @@
+version: "3"
+
+networks:
+  bridge:
+    driver: bridge
+  
+services:
+  heimdall-app:
+    image: linuxserver/heimdall
+    container_name: heimdall-app
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=america/chicago
+    volumes:
+      - ./heimdall-config:/config
+    ports:
+      - 9080:80
+      - 9443:443
+    restart: unless-stopped
+
+  adminer:
+    image: adminer
+    restart: always
+    networks:
+      - bridge
+    ports:
+      - 8081:8080
+
+  bazarr:
+    image: linuxserver/bazarr
+    container_name: bazarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=american/chicago
+      - UMASK_SET=022 #optional
+    volumes:
+      - ./bazarr-config/:/config
+      - H:/--- Movies ---:/movies-1
+      - K:/--- HEVC Movies ---:/movies-hevc
+      - E:/--- Off Air ---:/tv-offair
+      - I:/--- On Air ---:/tv-onair
+      - J:/Kids Movies:/movies-kids
+      - J:/--- Kids TV Shows ---:/tv-kids
+      - J:/--- Anime Series ---:/anime
+    ports:
+      - 6767:6767
+    restart: unless-stopped
+
+  grocy:
+    image: linuxserver/grocy
+    container_name: grocy
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - ./grocy-config:/config
+    ports:
+      - 9283:80
+    restart: unless-stopped
+
+  nginx-app:
+    image: jc21/nginx-proxy-manager:2
+    restart: always
+    ports:
+      # Public HTTP Port:
+      - '80:80'
+      # Public HTTPS Port:
+      - '443:443'
+      # Admin Web Port:
+      - '81:81'
+    environment:
+      # Uncomment this if IPv6 is not enabled on your host
+      DISABLE_IPV6: 'true'
+    volumes:
+      # Make sure this config.json file exists as per instructions above:
+      - ./nginxproxymanager/config.json:/app/config/production.json
+      - ./nginxproxymanager/data:/data
+      - ./nginxproxymanager/letsencrypt:/etc/letsencrypt
+#    depends_on:
+#      - nginx-db
+
+  wikijs-app:
+    image: requarks/wiki:2
+    depends_on:
+      - wikijs-db
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: wikijs-db
+      DB_PORT: 5432
+      DB_USER: wikijs
+      DB_PASS: wikijsrocks
+      DB_NAME: wiki
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    networks:
+      - bridge
+
+  omnidb-app:
+    image: taivokasper/omnidb
+    restart: always
+    ports:
+      - '25482:25482'
+      - '8080:8080'
+    volumes:
+      - ./omnidb:/etc/omnidb
+    networks:
+      - bridge
+
+  mayanedms-app:
+    depends_on:
+      - mayanedms-db
+      - redis
+      # Enable to use RabbitMQ
+      #- rabbitmq
+    environment: &mayan_env
+      # Enable to use RabbitMQ
+      # MAYAN_CELERY_BROKER_URL: amqp://${MAYAN_RABBITMQ_USER:-mayan}:${MAYAN_RABBITMQ_PASSWORD:-mayanrabbitpass}@rabbitmq:5672/${MAYAN_RABBITMQ_VHOST:-mayan}
+      # To use RabbitMQ as broker, disable Redis as broker
+      MAYAN_CELERY_BROKER_URL: redis://:${MAYAN_REDIS_PASSWORD:-mayanredispassword}@redis:6379/0
+      MAYAN_CELERY_RESULT_BACKEND: redis://:${MAYAN_REDIS_PASSWORD:-mayanredispassword}@redis:6379/1
+      MAYAN_DATABASES: "{'default':{'ENGINE':'django.db.backends.postgresql','NAME':'${MAYAN_DATABASE_DB:-mayan}','PASSWORD':'${MAYAN_DATABASE_PASSWORD:-mayandbpass}','USER':'${MAYAN_DATABASE_USER:-mayan}','HOST':'mayanedms-db'}}"
+      MAYAN_DOCKER_WAIT: "mayanedms-db:5432 redis:6379"
+      # Replace with the line below when using RabbitMQ
+      # MAYAN_DOCKER_WAIT: "postgresql:5432 redis:6379 rabbitmq:5672"
+      # To add operating system packages, like additional OCR language,
+      # packages, put then in the variable below.
+      # MAYAN_APT_INSTALLS: "tesseract-ocr-deu tesseract-ocr-nld"
+      # To add Python libraries, like LDAP, put then in the variable below.
+      # MAYAN_PIP_INSTALLS: "python-ldap"
+    image: mayanedms/mayanedms:3
+    networks:
+      - bridge
+    ports:
+      - '8000:8000'
+    restart: unless-stopped
+    volumes:
+      - ./mayan-edms/storage:/var/lib/mayan
+      - ./mayan-edms/staging:/staging_files
+      - ./mayan-edms/watch:/watch_folder
+      # Optional volumes to access external data like staging or watch folders
+      # - /opt/staging_files:/staging_files
+      # - /opt/watch_folder:/watch_folder
+
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --databases
+      - "2"
+      - --maxmemory
+      - "100mb"
+      - --maxclients
+      - "500"
+      - --maxmemory-policy
+      - "allkeys-lru"
+      - --save
+      - ""
+      - --tcp-backlog
+      - "256"
+      - --requirepass
+      - "${MAYAN_REDIS_PASSWORD:-mayanredispassword}"
+    image: redis:5.0-alpine
+    networks:
+      - bridge
+    restart: unless-stopped
+    volumes:
+      - redis:/data
+
+#  nginx-db:
+#    image: jc21/mariadb-aria:10.4
+#    restart: always
+#    environment:
+#      MYSQL_ROOT_PASSWORD: 'npm'
+#      MYSQL_DATABASE: 'npm'
+#      MYSQL_USER: 'npm'
+#      MYSQL_PASSWORD: 'npm'
+#    command:
+#      'mysqld --innodb-flush-method=fsync --innodb-use-native-aio=OFF'
+#    volumes:
+      #- ./nginxproxymanager/data/mysql:/var/lib/mysql
+#      - nginxdb:/var/lib/mysql
+
+  wikijs-db:
+    image: postgres:11-alpine
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_PASSWORD: wikijsrocks
+      POSTGRES_USER: wikijs
+    logging:
+      driver: "none"
+    restart: unless-stopped
+    networks:
+      - bridge
+    volumes:
+      - wikijs-data:/var/lib/postgresql/data
+
+  mayanedms-db:
+    environment:
+      POSTGRES_DB: ${MAYAN_DATABASE_DB:-mayan}
+      POSTGRES_PASSWORD: ${MAYAN_DATABASE_PASSWORD:-mayandbpass}
+      POSTGRES_USER: ${MAYAN_DATABASE_USER:-mayan}
+    image: postgres:9.6-alpine
+    networks:
+      - bridge
+    restart: unless-stopped
+    volumes:
+      - mayanedms-data:/var/lib/postgresql/data
+    
+volumes:
+  wikijs-data:
+  #mayanedms-app:
+  mayanedms-data:
+  #rabbitmq:
+  redis:
+  nginxdb:
