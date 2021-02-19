@@ -206,7 +206,7 @@ services:
   #   volumes:
   #     - mayanedms-data:/var/lib/postgresql/data
     
-volumes:
+# volumes:
 #  wikijs-data:
   #mayanedms-app:
 #  mayanedms-data:
