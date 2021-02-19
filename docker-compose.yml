@@ -80,18 +80,48 @@ services:
     volumes:
       - ../docker-data/influxdb:/var/lib/influxdb
 
-  telegraf:
-    hostname: telegraf    
-    image: telegraf
-    container_name: telegraf
+  paperless-broker:
+    image: redis:6.0
     restart: unless-stopped
-    links:
-      - influxdb
-    networks:
-      - bridge
+
+  paperless-db:
+    image: postgres:13
+    restart: unless-stopped
     volumes:
-      # Mount for telegraf config
-      - ../docker-data/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+      - paperless-pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: paperless
+
+  paperless-webserver:
+    image: jonaswinkler/paperless-ng:latest
+    restart: unless-stopped
+    depends_on:
+      - paperless-db
+      - paperless-broker
+    ports:
+      - 8000:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - paperless-data:/usr/src/paperless/data
+      - paperless-media:/usr/src/paperless/media
+      - ../docker-data/paperless/export:/usr/src/paperless/export
+      - ../docker-data/paperless/consume:/usr/src/paperless/consume
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBHOST: db
+
+
+volumes:
+  paperless-data:
+  paperless-media:
+  paperless-pgdata:
+
 
   # adminer:
   #   image: adminer
