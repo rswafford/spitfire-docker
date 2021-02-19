@@ -78,6 +78,17 @@ services:
     volumes:
       - ../docker-data/influxdb:/var/lib/influxdb
 
+  telegraf:
+    hostname: telegraf    
+    image: telegraf
+    container_name: telegraf
+    restart: unless-stopped
+    links:
+      - influxdb
+    volumes:
+      # Mount for telegraf config
+      - ../docker-data/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+
   # adminer:
   #   image: adminer
   #   restart: always
