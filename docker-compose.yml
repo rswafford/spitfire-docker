@@ -72,7 +72,7 @@ services:
       DISABLE_IPV6: 'true'
     volumes:
       # Make sure this config.json file exists as per instructions above:
-      - ../docker-data/nginxproxymanager/config.json:/app/config/production.json
+      - ./nginx/config.json:/app/config/production.json
       - ../docker-data/nginxproxymanager/data:/data
       - ../docker-data/nginxproxymanager/letsencrypt:/etc/letsencrypt
 #    depends_on:
