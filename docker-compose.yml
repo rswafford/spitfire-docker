@@ -81,6 +81,7 @@ services:
       - ../docker-data/influxdb:/var/lib/influxdb
 
   paperless-broker:
+    hostname: paperless-broker
     image: redis:6.0
     restart: unless-stopped
 
@@ -115,7 +116,7 @@ services:
       - ../docker-data/paperless/export:/usr/src/paperless/export
       - ../docker-data/paperless/consume:/usr/src/paperless/consume
     environment:
-      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_REDIS: redis://paperless-broker:6379
       PAPERLESS_DBHOST: paperless-db
 
 
